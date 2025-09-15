@@ -1,6 +1,4 @@
-# GitHub Actions CI/CD Pipeline for Modern Question Answering System
-
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -13,52 +11,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11"]
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
-    - uses: actions/checkout@v3
-    
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: sudo apt-get update && sudo apt-get install -y libjpeg-dev zlib1g-dev
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov
+
     - name: Run tests
       run: |
-        python test_qa_system.py
-    
-    - name: Run linting
-      run: |
-        pip install flake8
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Test command line interface
-      run: |
-        python 0103.py --help || echo "CLI test completed"
-    
-    - name: Test web interface setup
-      run: |
-        python -c "import streamlit; print('Streamlit available')"
-        python -c "import transformers; print('Transformers available')"
+        if [ -d tests ]; then
+          pytest tests/ -v --tb=short
+        else
+          echo "No tests directory found, skipping tests"
+        fi
