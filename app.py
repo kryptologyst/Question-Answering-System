@@ -1,40 +1,32 @@
-# Streamlit Web UI for Question Answering System
-# Modern, interactive web interface for the QA system
+"""
+Modern Question Answering System - Streamlit Web Interface
+Interactive web UI for the QA system with advanced features
+"""
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
-import json
-import time
-import random
-from typing import List, Dict
-
-# Import our QA system
+from pathlib import Path
 import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import json
 
-# Import from the main module
-import importlib.util
-spec = importlib.util.spec_from_file_location("qa_system", "0103.py")
-qa_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(qa_module)
+# Add the project root to the path
+project_root = Path(__file__).parent
+sys.path.append(str(project_root))
 
-ModernQASystem = qa_module.ModernQASystem
-MockDatabase = qa_module.MockDatabase
-QAResult = qa_module.QAResult
+from qa_system import ModernQASystem, QAResult
+from data.mock_database import MockDatabase
 
 # Page configuration
 st.set_page_config(
-    page_title="🤖 Modern Question Answering System",
-    page_icon="🤖",
+    page_title="🧠 Modern QA System",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -53,240 +45,264 @@ st.markdown("""
         border-left: 4px solid #667eea;
     }
     .answer-box {
-        background-color: #e8f4fd;
+        background-color: #e8f5e8;
         padding: 1rem;
         border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-        margin: 1rem 0;
+        border-left: 4px solid #28a745;
     }
-    .confidence-high { color: #28a745; }
-    .confidence-medium { color: #ffc107; }
-    .confidence-low { color: #dc3545; }
+    .confidence-high { color: #28a745; font-weight: bold; }
+    .confidence-medium { color: #ffc107; font-weight: bold; }
+    .confidence-low { color: #dc3545; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
 @st.cache_resource
-def load_qa_system():
+def load_qa_system(model_name: str = "distilbert"):
     """Load the QA system with caching"""
-    return ModernQASystem()
+    return ModernQASystem(model_name=model_name)
 
 @st.cache_resource
-def load_mock_database():
+def load_database():
     """Load the mock database with caching"""
     return MockDatabase()
 
-def display_answer(result: QAResult):
-    """Display answer with confidence styling"""
-    confidence_class = "confidence-high" if result.confidence >= 0.8 else "confidence-medium" if result.confidence >= 0.5 else "confidence-low"
-    
-    st.markdown(f"""
-    <div class="answer-box">
-        <h4>🤖 Answer:</h4>
-        <p style="font-size: 1.2rem; margin: 0.5rem 0;">{result.answer}</p>
-        <p class="{confidence_class}" style="font-weight: bold;">
-            Confidence: {result.confidence:.3f} ({'High' if result.confidence >= 0.8 else 'Medium' if result.confidence >= 0.5 else 'Low'})
-        </p>
-        <small>Model: {result.model_name} | Timestamp: {result.timestamp}</small>
-    </div>
-    """, unsafe_allow_html=True)
+def get_confidence_color_class(confidence: float) -> str:
+    """Get CSS class based on confidence score"""
+    if confidence >= 0.7:
+        return "confidence-high"
+    elif confidence >= 0.4:
+        return "confidence-medium"
+    else:
+        return "confidence-low"
 
-def create_confidence_chart(results: List[QAResult]):
-    """Create a confidence distribution chart"""
-    confidences = [r.confidence for r in results]
+def display_answer_result(result: QAResult, show_context: bool = True):
+    """Display a single QA result"""
+    col1, col2 = st.columns([3, 1])
     
-    fig = go.Figure(data=[
-        go.Bar(
-            x=[f"Q{i+1}" for i in range(len(results))],
-            y=confidences,
-            marker_color=['#28a745' if c >= 0.8 else '#ffc107' if c >= 0.5 else '#dc3545' for c in confidences],
-            text=[f"{c:.3f}" for c in confidences],
-            textposition='auto',
-        )
-    ])
+    with col1:
+        st.markdown(f"""
+        <div class="answer-box">
+            <strong>Answer:</strong> {result.answer}
+        </div>
+        """, unsafe_allow_html=True)
     
-    fig.update_layout(
-        title="Confidence Scores by Question",
-        xaxis_title="Questions",
-        yaxis_title="Confidence Score",
-        yaxis=dict(range=[0, 1]),
-        height=400
-    )
+    with col2:
+        confidence_class = get_confidence_color_class(result.confidence)
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="{confidence_class}">
+                Confidence: {result.confidence:.3f}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
-    return fig
+    if show_context:
+        with st.expander("📄 View Context"):
+            st.text(result.context)
+    
+    st.markdown("---")
 
 def main():
     """Main Streamlit application"""
     
     # Header
-    st.markdown('<h1 class="main-header">🤖 Modern Question Answering System</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🧠 Modern Question Answering System</h1>', unsafe_allow_html=True)
     
-    # Initialize systems
-    qa_system = load_qa_system()
-    mock_db = load_mock_database()
+    # Load systems
+    with st.spinner("Loading QA system and database..."):
+        qa_system = load_qa_system()
+        database = load_database()
     
     # Sidebar
-    st.sidebar.title("⚙️ Configuration")
-    
-    # Model selection
-    st.sidebar.subheader("🤖 Model Selection")
-    model_options = {
-        "DistilBERT (Fast)": "distilbert-base-uncased-distilled-squad",
-        "BERT Base": "bert-base-uncased",
-        "RoBERTa": "roberta-base-squad2"
-    }
-    
-    selected_model = st.sidebar.selectbox(
-        "Choose Model:",
-        options=list(model_options.keys()),
-        index=0
-    )
-    
-    # Update model if changed
-    if qa_system.model_name != model_options[selected_model]:
-        with st.spinner(f"Loading {selected_model}..."):
-            qa_system = ModernQASystem(model_options[selected_model])
-            st.success(f"✅ {selected_model} loaded successfully!")
-    
-    # Topic selection
-    st.sidebar.subheader("📚 Topic Selection")
-    topics = mock_db.list_topics()
-    selected_topic = st.sidebar.selectbox(
-        "Choose Topic:",
-        options=topics,
-        format_func=lambda x: x.replace('_', ' ').title()
-    )
-    
-    # Get context and questions
-    context, questions = mock_db.get_context_by_topic(selected_topic)
-    
-    # Main content area
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("📖 Context")
-        st.text_area("", value=context.strip(), height=200, disabled=True)
+    with st.sidebar:
+        st.header("⚙️ Configuration")
         
-        st.subheader("❓ Ask Questions")
-        
-        # Question input
-        user_question = st.text_input(
-            "Enter your question:",
-            placeholder="e.g., Who designed the Eiffel Tower?"
+        # Model selection
+        model_options = list(qa_system.model_manager.AVAILABLE_MODELS.keys())
+        selected_model = st.selectbox(
+            "Select Model",
+            model_options,
+            index=0,
+            help="Choose the QA model to use"
         )
         
-        # Predefined questions
-        st.write("**Or select a predefined question:**")
-        if st.button("🎲 Random Question"):
-            user_question = random.choice(questions)
-            st.session_state.random_question = user_question
+        # Reload system if model changed
+        if selected_model != qa_system.model_manager.model_name:
+            qa_system = load_qa_system(selected_model)
         
-        if 'random_question' in st.session_state:
-            user_question = st.session_state.random_question
+        st.markdown("---")
         
-        # Answer button
-        if st.button("🔍 Get Answer", type="primary"):
-            if user_question:
-                with st.spinner("Processing your question..."):
-                    result = qa_system.answer_question(user_question, context)
-                    display_answer(result)
-                    
-                    # Store result in session state
-                    if 'qa_history' not in st.session_state:
-                        st.session_state.qa_history = []
-                    st.session_state.qa_history.append(result)
+        # Database statistics
+        st.header("📊 Database Stats")
+        stats = database.get_statistics()
+        st.metric("Total Documents", stats["total_documents"])
+        st.metric("Categories", len(stats["categories"]))
+        st.metric("Unique Tags", stats["unique_tags"])
+        
+        # Category filter
+        st.markdown("---")
+        st.header("🔍 Filter Documents")
+        categories = list(stats["categories"].keys())
+        selected_category = st.selectbox("Category", ["All"] + categories)
+        
+        # Load documents based on filter
+        if selected_category == "All":
+            documents = database.get_all_documents()
+        else:
+            documents = database.get_documents_by_category(selected_category)
+        
+        qa_system.load_documents([doc["content"] for doc in documents])
+    
+    # Main content area
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Single Question", "📝 Batch Questions", "📚 Document Explorer", "📊 Analytics"])
+    
+    with tab1:
+        st.header("Ask a Single Question")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            question = st.text_input(
+                "Enter your question:",
+                placeholder="e.g., What is artificial intelligence?",
+                help="Ask any question about the loaded documents"
+            )
+        
+        with col2:
+            top_k = st.slider("Number of contexts", 1, 5, 3)
+        
+        if st.button("🔍 Get Answer", type="primary") and question:
+            with st.spinner("Processing your question..."):
+                results = qa_system.answer_with_context_ranking(question, top_k)
+            
+            if results:
+                st.success(f"Found {len(results)} answer(s)")
+                
+                for i, result in enumerate(results, 1):
+                    st.subheader(f"Answer {i}")
+                    display_answer_result(result)
             else:
-                st.warning("Please enter a question first!")
+                st.warning("No answers found. Try a different question or check your documents.")
     
-    with col2:
-        st.subheader("📊 System Info")
+    with tab2:
+        st.header("Batch Question Processing")
         
-        # Metrics
-        col2_1, col2_2 = st.columns(2)
-        with col2_1:
-            st.metric("Model", selected_model)
-            st.metric("Device", "GPU" if qa_system.device == "cuda" else "CPU")
+        # Sample questions
+        sample_questions = [
+            "What is artificial intelligence?",
+            "How does machine learning work?",
+            "What are the effects of climate change?",
+            "What is quantum computing?",
+            "How does blockchain work?"
+        ]
         
-        with col2_2:
-            st.metric("Topic", selected_topic.replace('_', ' ').title())
-            st.metric("Questions Available", len(questions))
+        col1, col2 = st.columns([2, 1])
         
-        # Confidence distribution
-        if 'qa_history' in st.session_state and st.session_state.qa_history:
-            st.subheader("📈 Confidence Distribution")
-            fig = create_confidence_chart(st.session_state.qa_history)
-            st.plotly_chart(fig, use_container_width=True)
+        with col1:
+            questions_text = st.text_area(
+                "Enter questions (one per line):",
+                value="\n".join(sample_questions),
+                height=200,
+                help="Enter multiple questions, one per line"
+            )
         
-        # Recent questions
-        if 'qa_history' in st.session_state and st.session_state.qa_history:
-            st.subheader("🕒 Recent Questions")
-            recent_questions = st.session_state.qa_history[-5:]  # Last 5 questions
-            for i, result in enumerate(reversed(recent_questions)):
-                with st.expander(f"Q{i+1}: {result.question[:50]}..."):
-                    st.write(f"**Answer:** {result.answer}")
-                    st.write(f"**Confidence:** {result.confidence:.3f}")
-    
-    # Batch processing section
-    st.subheader("🔄 Batch Processing")
-    
-    col3, col4 = st.columns([1, 1])
-    
-    with col3:
-        if st.button("📝 Answer All Predefined Questions"):
-            with st.spinner("Processing all questions..."):
-                results = qa_system.batch_answer(questions, context)
+        with col2:
+            st.markdown("**Sample Questions:**")
+            for i, q in enumerate(sample_questions, 1):
+                st.text(f"{i}. {q}")
+        
+        if st.button("🚀 Process All Questions", type="primary"):
+            questions = [q.strip() for q in questions_text.split('\n') if q.strip()]
+            
+            if questions:
+                progress_bar = st.progress(0)
+                results_container = st.container()
+                
+                all_results = []
+                
+                for i, question in enumerate(questions):
+                    with st.spinner(f"Processing question {i+1}/{len(questions)}..."):
+                        question_results = qa_system.answer_with_context_ranking(question, 1)
+                        if question_results:
+                            all_results.extend(question_results)
+                    
+                    progress_bar.progress((i + 1) / len(questions))
                 
                 # Display results
-                for i, result in enumerate(results, 1):
-                    st.write(f"**Q{i}:** {result.question}")
-                    display_answer(result)
-                    st.divider()
+                with results_container:
+                    st.success(f"Processed {len(questions)} questions")
+                    
+                    for i, question in enumerate(questions):
+                        question_results = [r for r in all_results if r.question == question]
+                        if question_results:
+                            st.subheader(f"Q{i+1}: {question}")
+                            display_answer_result(question_results[0], show_context=False)
+            else:
+                st.warning("Please enter at least one question.")
     
-    with col4:
-        # Export results
-        if 'qa_history' in st.session_state and st.session_state.qa_history:
-            st.subheader("💾 Export Results")
-            
-            # Convert to DataFrame
-            df_data = []
-            for result in st.session_state.qa_history:
-                df_data.append({
-                    'Question': result.question,
-                    'Answer': result.answer,
-                    'Confidence': result.confidence,
-                    'Model': result.model_name,
-                    'Timestamp': result.timestamp
-                })
-            
-            df = pd.DataFrame(df_data)
-            
-            # Download buttons
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download CSV",
-                data=csv,
-                file_name=f"qa_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-            
-            json_data = json.dumps([result.__dict__ for result in st.session_state.qa_history], indent=2)
-            st.download_button(
-                label="📥 Download JSON",
-                data=json_data,
-                file_name=f"qa_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
+    with tab3:
+        st.header("Document Explorer")
+        
+        # Search functionality
+        search_query = st.text_input("Search documents:", placeholder="Enter keywords...")
+        
+        if search_query:
+            search_results = database.search_documents(search_query)
+            st.info(f"Found {len(search_results)} documents matching '{search_query}'")
+        else:
+            search_results = documents
+        
+        # Display documents
+        for doc in search_results:
+            with st.expander(f"📄 {doc['title']} ({doc['category']})"):
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.write(doc['content'])
+                
+                with col2:
+                    st.markdown("**Tags:**")
+                    for tag in doc['tags']:
+                        st.markdown(f"- {tag}")
     
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style='text-align: center; color: #666;'>
-            <p>🤖 Modern Question Answering System | Built with Streamlit & Hugging Face Transformers</p>
-            <p>Supports multiple models: DistilBERT, BERT, RoBERTa | Real-time confidence scoring</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with tab4:
+        st.header("Analytics Dashboard")
+        
+        # Model information
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Current Model", qa_system.model_manager.model_name)
+        
+        with col2:
+            st.metric("Device", qa_system.model_manager.device)
+        
+        with col3:
+            st.metric("Available Models", len(qa_system.model_manager.AVAILABLE_MODELS))
+        
+        # Document distribution
+        st.subheader("📊 Document Distribution")
+        
+        # Category distribution
+        category_data = pd.DataFrame(list(stats["categories"].items()), columns=["Category", "Count"])
+        fig_cat = px.pie(category_data, values="Count", names="Category", title="Documents by Category")
+        st.plotly_chart(fig_cat, use_container_width=True)
+        
+        # Tag frequency
+        st.subheader("🏷️ Most Common Tags")
+        all_tags = []
+        for doc in database.get_all_documents():
+            all_tags.extend(doc["tags"])
+        
+        tag_counts = pd.Series(all_tags).value_counts().head(10)
+        fig_tags = px.bar(x=tag_counts.values, y=tag_counts.index, orientation='h', 
+                         title="Top 10 Most Common Tags")
+        fig_tags.update_layout(yaxis={'categoryorder': 'total ascending'})
+        st.plotly_chart(fig_tags, use_container_width=True)
+        
+        # Model comparison (placeholder)
+        st.subheader("🔬 Model Performance Comparison")
+        st.info("Model comparison feature coming soon! This would show performance metrics across different models.")
 
 if __name__ == "__main__":
     main()
