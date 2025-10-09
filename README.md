@@ -20,8 +20,8 @@ A state-of-the-art question answering system built with the latest transformer m
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd 0175_Question_answering_system
+git clone https://github.com/kryptologyst/Question-Answering-System.git
+cd Question-Answering-System
 
 # Install dependencies
 pip install -r requirements.txt
